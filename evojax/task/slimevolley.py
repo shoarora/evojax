@@ -921,7 +921,7 @@ class SlimeVolley2P(VectorizedTask):
         def reset_fn(key):
             next_key, key = random.split(key)
             game_state = get_init_game_state_fn(key)
-            return State(game_state=game_state, obs=get_obs(game_state), obs_other=get_obs(game_state, other=True)
+            return State(game_state=game_state, obs=get_obs(game_state), obs_other=get_obs(game_state, other=True),
                          steps=jnp.zeros((), dtype=int), key=next_key)
         self._reset_fn = jax.jit(jax.vmap(reset_fn))
 
