@@ -291,7 +291,7 @@ class State(TaskState):
     obs: jnp.ndarray
     steps: jnp.int32
     key: jnp.ndarray
-    obs_other: jnp.ndarray
+    obs_other: jnp.ndarray | None = None
 
 
 @dataclass
