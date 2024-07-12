@@ -842,6 +842,10 @@ def update_state(action: jnp.ndarray, game_state: GameState, key: jnp.array , ot
     updated_game_state = update_state_for_new_match(
         updated_game_state, reward, key)
 
+    if other_action is not None:
+        obs_other = game.agent_left.getObservation()
+        return updated_game_state, reward, obs, obs_other
+
     return updated_game_state, reward, obs
 
 
@@ -927,7 +931,7 @@ class SlimeVolley2P(VectorizedTask):
 
         def step_fn(state, action_right, action_left):
             next_key, key = random.split(state.key)
-            cur_state, reward, obs = update_state(
+            cur_state, reward, obs, obs_other = update_state(
                 action=action_right, other_action=action_left, game_state=state.game_state, key=key)
             steps = state.steps + 1
             done_test = jnp.bitwise_or(
@@ -935,7 +939,7 @@ class SlimeVolley2P(VectorizedTask):
             # during training, go for all 3000 steps.
             done = jnp.where(self.test, done_test, steps >= max_steps)
             steps = jnp.where(done, jnp.zeros((), jnp.int32), steps)
-            return State(game_state=cur_state, obs=obs,
+            return State(game_state=cur_state, obs=obs, obs_other=obs_other,
                          steps=steps, key=next_key), reward, done
         self._step_fn = jax.jit(jax.vmap(step_fn))
 
