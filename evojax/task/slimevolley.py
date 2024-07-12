@@ -291,6 +291,7 @@ class State(TaskState):
     obs: jnp.ndarray
     steps: jnp.int32
     key: jnp.ndarray
+    obs_other: jnp.ndarray
 
 
 @dataclass
@@ -828,9 +829,11 @@ def update_state_for_new_match(game_state: GameState,
                      p.action_right_flag, p.action_right)
 
 
-def update_state(action: jnp.ndarray, game_state: GameState, key: jnp.array):
+def update_state(action: jnp.ndarray, game_state: GameState, key: jnp.array , other_action: jnp.ndarray | None = None):
     game = Game(game_state)
     game.setRightAction(action)
+    if other_action is not None:
+        game.setLeftAction(other_action)
     game.setAction()
     reward = game.step()  # from perspective of the agent on the right
     updated_game_state = game.getGameState()
@@ -848,8 +851,10 @@ def detect_done(game_state: GameState):
     return result
 
 
-def get_obs(game_state: GameState):
+def get_obs(game_state: GameState, other: bool = False):
     game = Game(game_state)
+    if other:
+        return game.agent_left.getObservation()
     return game.agent_right.getObservation()
 
 
@@ -901,3 +906,43 @@ class SlimeVolley(VectorizedTask):
         canvas = game.display()
         img = Image.fromarray(canvas)
         return img
+
+
+class SlimeVolley2P(VectorizedTask):
+    def __init__(self,
+                 max_steps: int = 3000,
+                 test: bool = False):
+
+        self.max_steps = max_steps
+        self.obs_shape = tuple([12, ])
+        self.act_shape = tuple([3, ])
+        self.test = test
+
+        def reset_fn(key):
+            next_key, key = random.split(key)
+            game_state = get_init_game_state_fn(key)
+            return State(game_state=game_state, obs=get_obs(game_state), obs_other=get_obs(game_state, other=True)
+                         steps=jnp.zeros((), dtype=int), key=next_key)
+        self._reset_fn = jax.jit(jax.vmap(reset_fn))
+
+        def step_fn(state, action_right, action_left):
+            next_key, key = random.split(state.key)
+            cur_state, reward, obs = update_state(
+                action=action_right, other_action=action_left, game_state=state.game_state, key=key)
+            steps = state.steps + 1
+            done_test = jnp.bitwise_or(
+                detect_done(cur_state), steps >= max_steps)
+            # during training, go for all 3000 steps.
+            done = jnp.where(self.test, done_test, steps >= max_steps)
+            steps = jnp.where(done, jnp.zeros((), jnp.int32), steps)
+            return State(game_state=cur_state, obs=obs,
+                         steps=steps, key=next_key), reward, done
+        self._step_fn = jax.jit(jax.vmap(step_fn))
+
+    def reset(self, key: jnp.ndarray) -> State:
+        return self._reset_fn(key)
+
+    def step(self,
+             state: State,
+             action_right: jnp.ndarray, action_left: jnp.ndarray) -> Tuple[State, jnp.ndarray, jnp.ndarray]:
+        return self._step_fn(state, action_right, action_left)
